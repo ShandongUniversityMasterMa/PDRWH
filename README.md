@@ -1,6 +1,6 @@
 # PDRWH: prioritizing Personalized cancer Driver genes via Random Walk on Hypergraph model
 
-### This is the original repository for the PDRWH paper. PDRWH is based on R 4.2.1.
+### This is the original repository for the PDRWH paper. PDRWH requires R >= 4.2.1.
 
 **Installing the dependencies**
 
