@@ -15,6 +15,7 @@ for (i in 1:length(cancer)) {
   outfile_dir <- paste0("../out/",cancer_type,"/")
   PDRWHscore(cancer_type,snv,"../data/STRINGv10.txt",outfile_dir)
   resultTransform(cancer_type,outfile_dir,outfile_dir)
+  # PDRWH_cohort_score(outfile_dir)
   
   print("----------------------------------------------------")
   print(paste0("PDRWH for ",cancer_type,":  Achieved!"))
