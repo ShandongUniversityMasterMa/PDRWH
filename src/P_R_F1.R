@@ -94,6 +94,7 @@ get_R_P_F <- function(score_data,genelist,data_mut,top_n) {
 }
 
 get_top_n <- function(methods_nums,score_data,methods_names,genelist,data_mut,genelist_name) {
+  
   plot_data <- list()
   for(i in (1:methods_nums)) {
     print(paste0(i,"  ",methods_names[i]))
@@ -145,15 +146,15 @@ process_prodigy <- function(results,data_mut) {
 
 
 ###plot
-genelist <- read.csv("../data/general_driver_list.csv",header=T)[,1]
-cancer_list=c("BRCA","KIRC","LIHC","GBM","STAD")
+genelist <- read.csv("../data/general_driver_list.csv",header = T)[,1]
+cancer_list <- c("BRCA","KIRC","LIHC","GBM","STAD")
 
 for (k in 1:length(cancer_list)) {
   cancer <- cancer_list[k]
   print("----------------------------------------------------")
   print(paste0("Precision, Recall, F1-score in ",cancer,"..."))
   print("----------------------------------------------------")
-  prdwh <- read.table(paste0("../out/",cancer,"/PDRWH.txt"),header=T,check.names = F)
+  prdwh <- read.table(paste0("../out/",cancer,"/PDRWH.txt"),header = T,check.names = F)
   data_mut <- get_data(paste0("../data/",cancer,"/",cancer,"_mc3_gene_level.txt"))
   score_data <- list(prdwh)
 
@@ -161,7 +162,7 @@ for (k in 1:length(cancer_list)) {
             score_data = score_data,
             methods_names = "PDRWH",
             genelist,data_mut,paste0(cancer,""))
-  if (k==length(cancer_list)) {
+  if (k == length(cancer_list)) {
     print("----------------------------------------------------")
     print(paste0("Precision, Recall, F1-score in ",cancer,": Achieved!"))
     print("----------------------------------------------------")
