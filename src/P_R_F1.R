@@ -13,11 +13,11 @@ get_data <- function(data_file) {
   if (length(especial_gene_index) > 0){
     data[especial_gene_index,1] <- "NA"
   } else {data <- data }
-  
-  #data=data[-which(data[,1]==""),]
   rownames(data) <- data[,1]
   data <- data[,-1]
   data_mut <- as.matrix(data[which(apply(data,1,sum) != 0),which(apply(data,2,sum) != 0)])
+  colnames(data_mut) <- substr(colnames(data_mut),1,12)
+  
   return(data_mut)
 }
 
@@ -154,9 +154,9 @@ for (k in 1:length(cancer_list)) {
   print("----------------------------------------------------")
   print(paste0("Precision, Recall, F1-score in ",cancer,"..."))
   print("----------------------------------------------------")
-  prdwh <- read.table(paste0("../out/",cancer,"/PDRWH.txt"),header = T,check.names = F)
+  pdrwh <- read.table(paste0("../out/",cancer,"/PDRWH.txt"),header = T,check.names = F)
   data_mut <- get_data(paste0("../data/",cancer,"/",cancer,"_mc3_gene_level.txt"))
-  score_data <- list(prdwh)
+  score_data <- list(pdrwh)
 
   get_top_n(methods_nums = 1,
             score_data = score_data,
