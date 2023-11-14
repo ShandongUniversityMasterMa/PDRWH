@@ -16,26 +16,96 @@ get_mut_data <- function(data_file) {
   return(mut_data)
 }
 
-get_vertex_W <- function(sample_i,data_mut_com,com_mut_samples,Graph,sample_i_mut_genes,H) {
+get_exp_data <- function(data_file){
   
-  mut_data_i <- data_mut_com[,sample_i]
+  exp_data <- read.delim(data_file,header = T,as.is = T,check.names = F)
+  especial_gene_index <- which(is.na(exp_data[,1]) | exp_data[,1] == "" | exp_data[,1] == ".")
+  if (length(especial_gene_index) > 0){
+    exp_data <- exp_data[-especial_gene_index,]
+  }
+  sample_id <- colnames(exp_data)
+  colnames(exp_data) <- substr(sample_id,1,15)
+  
+  return(exp_data)
+}
+
+get_normal_exp <- function(exp_data,com_samples) {
+  
+  sample_id <- colnames(exp_data)
+  normal_idx <- which(substr(sample_id,14,14) == "1")
+  normal_sample_id <- substr(sample_id[normal_idx],1,15)
+  normal_exp <- exp_data[,normal_sample_id,drop=F]
+  
+  return(normal_exp)
+}
+
+get_ppi_network <- function(network_file,b_split) {
+  
+  Network <- read.table(network_file,header = T)
+  edge_idx <- which(Network[,3] >= b_split)
+  Network <- Network[edge_idx,]
+  Graph <- graph.data.frame(Network)
+  
+  return(Graph)
+}
+
+combine_mut_exp <- function(data_mut_com,exp_data) {
+  
+  genes <- intersect(rownames(data_mut_com),rownames(exp_data))
+  exp_data_scaled <- scale(t(exp_data[genes,]),center = T,scale = T)
+  outlying_idx <- (abs(exp_data_scaled) >= 2) + 0  #
+  samples <- colnames(data_mut_com)
+    
+  data_mut_exp <- data_mut_com
+  for (i in 1:length(samples)) {
+    sample_i <- samples[i]
+    outlying_gene <- genes[which(outlying_idx[sample_i,] == 1)]
+    data_mut_exp[outlying_gene,sample_i] <- 1
+  }
+  
+  tmp <- which(rowSums(data_mut_exp) == 0)
+  data_mut_exp <- data_mut_exp[-tmp,]
+  col_sum <- colSums(data_mut_exp)
+  
+  return(data_mut_exp)
+}
+
+get_edge_W <- function(sample_i,exp_data,H) {
+  
+  genes <- unique(rownames(exp_data))
+  if (length(genes) <= 1) {
+    edge_w <- matrix(1,dim(H)[2],1)
+  } else {
+    exp_cor <- cor(exp_data[genes,],method = "pearson")
+    exp_cor_idx <- ((exp_cor) >= 0.4) + 0
+    exp_cor <- abs(exp_cor) * exp_cor_idx
+    edge_w <- exp_cor[,sample_i]
+    edge_w_1 <- -(1 - edge_w)^2
+    edge_w_2 <- edge_w_1 / (0.1^2 *2)
+    edge_w <- exp(edge_w_2)
+  }
+  edge_w[is.na(edge_w)] <- 0
+  Edge_W <- diag(c(t(edge_w)))
+  
+  return(Edge_W)
+}
+
+get_vertex_W <- function(sample_i,data_mut_exp,com_mut_samples,Graph,sample_i_mut_genes) {
+  
+  mut_data_i <- data_mut_exp[,sample_i]
   vertex_W <- c()
   for(k in com_mut_samples){
     vertex_w <- rep(0,length(sample_i_mut_genes))
     names(vertex_w) <- sample_i_mut_genes
+    mut_data_k <- data_mut_exp[,k]
+    mut_exp_gene <- names(mut_data_k[which(mut_data_k == 1)])
     
-    mut_data_k <- data_mut_com[,k] 
-    mut_gene <- names(mut_data_k[which(mut_data_k == 1)])
-    
-    v_i <- intersect(mut_gene,V(Graph)$name)
-    v_diff <- setdiff(mut_gene,V(Graph)$name)
-    
+    v_i <- intersect(mut_exp_gene,V(Graph)$name)
     graph_i <- induced_subgraph(Graph, v_i) 
     graph_i_degree <- degree(graph_i)[v_i]
     graph_i_degree[which(graph_i_degree == 0)] = 0.01
     
     co_mut_genes <- intersect(v_i,sample_i_mut_genes)
-    
     vertex_w[co_mut_genes] <- graph_i_degree[co_mut_genes]
     vertex_w[setdiff(sample_i_mut_genes,co_mut_genes)] = 0.01
     vertex_W <- cbind(vertex_W,vertex_w)
@@ -45,18 +115,19 @@ get_vertex_W <- function(sample_i,data_mut_com,com_mut_samples,Graph,sample_i_mu
   return(vertex_W)
 }
 
-get_P <- function(H,vertex_W) {
+get_P <- function(H,Edge_W,Vertex_W) {
   
-  Degree_v <- apply(H,1,sum)
+  H_W <- H %*% Edge_W
+  Degree_v <- apply(H_W,1,sum)
   D_v_inverse <- diag(1/Degree_v)
   
-  probability_hyperedge <- D_v_inverse %*% H
+  probability_hyperedge <- D_v_inverse %*% H_W
   rownames(probability_hyperedge) <- rownames(H)
   
-  Degree_ve <- apply(vertex_W,2,sum)
+  Degree_ve <- apply(Vertex_W,2,sum)
   D_ve_inverse <- diag(1/Degree_ve)
   
-  probability_vertex <- D_ve_inverse %*% t(vertex_W)
+  probability_vertex <- D_ve_inverse %*% t(Vertex_W)
   rownames(probability_vertex) <- colnames(H)
   
   P <- probability_hyperedge %*% probability_vertex
@@ -64,10 +135,12 @@ get_P <- function(H,vertex_W) {
   return(as.matrix(P))
 }
 
-get_hyper_randomwalk <- function(P,H,theta=0.85) {
+get_hyper_randomwalk <- function(P,H,theta=0.85,mut_idx) {
   
-  v0 <- rep(1/nrow(H),nrow(H))    #initial vector
-  teleport <- rep(1/nrow(H),nrow(H)) #
+  v0 <- rep(0,nrow(H))
+  names(v0) <- rownames(H)
+  v0[mut_idx] <- 1/length(mut_idx)
+  teleport <- v0
   
   Distance <- c()
   vi <- v0
@@ -82,50 +155,61 @@ get_hyper_randomwalk <- function(P,H,theta=0.85) {
   }
   plot(1:k,Distance)
   
+  vi <- vi[mut_idx,,drop=F]
   Importance <- data.frame(vi[order(vi,decreasing = T),])
   colnames(Importance) <- c("Importance")
   
   return(Importance)
 }
 
-hygraph_randomwalk <- function(sample_i,data_mut_com,co_mut,Graph) {
+hygraph_randomwalk <- function(sample_i,data_mut_exp,mut_idx,co_mut,exp_data,Graph) {
   
-  sample_i_mut_genes <- rownames(data_mut_com)[which(data_mut_com[,sample_i] == 1)] 
-  com_mut_sample_i <- co_mut[sample_i,which(co_mut[sample_i,] != 0)] 
-  com_mut_samples <- names(com_mut_sample_i)
+  sample_i_mut_genes <- rownames(data_mut_exp)[which(data_mut_exp[,sample_i] == 1)] 
+  com_mut_sample_i <- which(co_mut[sample_i,] >= 1)
+  com_mut_samples <- colnames(co_mut)[com_mut_sample_i]
   
-  H <- data_mut_com[sample_i_mut_genes,com_mut_samples,drop=F] 
-  Vertex_W <- get_vertex_W(sample_i,data_mut_com,com_mut_samples,Graph,sample_i_mut_genes,H)
-  P <- get_P(H,Vertex_W)
-  importance_score <- get_hyper_randomwalk(P,H,theta=0.85)
+  H <- data_mut_exp[sample_i_mut_genes,com_mut_samples,drop=F]
+  E <- exp_data[,com_mut_samples,drop=F]
+  Vertex_W <- get_vertex_W(sample_i,data_mut_exp,com_mut_samples,Graph,sample_i_mut_genes)
+  Edge_W <- get_edge_W(sample_i,E,H)
+  P <- get_P(H,Edge_W,Vertex_W)
+  
+  importance_score <- get_hyper_randomwalk(P,H,theta=0.85,mut_idx)
   
   return(importance_score)
 }
 
-PDRWHscore <- function(cancer_type,mut_data_file,network_file,outfile_dir) {
+PDRWHscore <- function(cancer_type,mut_data_file,exp_data_file,network_file,outfile_dir) {
   
   mut_data <- get_mut_data(mut_data_file) 
-  mut_data_morethan_2 <- colnames(mut_data)[which(apply(mut_data,2,sum) >= 3)]
-  Network <- read.table(network_file,header = T)
-  Graph <- graph.data.frame(Network) 
+  mut_data_morethan_2 <- colnames(mut_data)[which(apply(mut_data,2,sum) >=3)]
+  exp_data <- get_exp_data(exp_data_file)
+  Graph <- get_ppi_network(network_file,b_split = 0.2)
+  genes_degree <- degree(Graph)
   
-  com_samples <- mut_data_morethan_2
-  data_mut_com <- mut_data[,com_samples] 
+  com_samples <- intersect(mut_data_morethan_2,colnames(exp_data))
+  data_mut_com <- mut_data[,com_samples]
+  
+  exp_data <- exp_data[,com_samples]
+  com_samples <- substr(com_samples,1,12)
+  colnames(exp_data) <- com_samples
+  colnames(data_mut_com) <- com_samples
+  
+  data_mut_idx <- data_mut_com
+  data_mut_exp <- combine_mut_exp(data_mut_com,exp_data)
   co_mut <- t(data_mut_com) %*% data_mut_com
-  rownames(co_mut) <- com_samples
-  colnames(co_mut) <- com_samples
   
   Importance_Score <- list()
-  for (i in 1:length(com_samples)){
+  for (i in 1:length(com_samples)) {
     sample_i <- com_samples[i]
     print(paste0(i," ",sample_i))
-    importance_score <- hygraph_randomwalk(sample_i,data_mut_com,co_mut,Graph)
+    mut_idx <- rownames(data_mut_idx)[which(data_mut_idx[,sample_i] == 1)]
+    importance_score <- hygraph_randomwalk(sample_i,data_mut_exp,mut_idx,co_mut,exp_data,Graph)
     Importance_Score[[i]] <- importance_score
   }
   names(Importance_Score) <- com_samples
   
   save(Importance_Score,file = paste(outfile_dir, cancer_type,".Rdata",sep = ""))
-  #print("Congratrulations!")
 }
 
 get_top_list <- function(PDRWH_score,top_num) {
@@ -173,7 +257,7 @@ PDRWH_cohort_score <- function(input_dir) {
   
   PDRWH_score <- read.table(paste0(input_dir,"/PDRWH.txt"))
   print("Get PDRWH-scores on the cohort-level... ")
-  top_list <- get_top_list(PDRWH_score,300)
+  top_list <- get_top_list(PDRWH_score,100) 
   condorcet_mat <- top_condorcet(top_list)
   
   A <- (condorcet_mat > 0) + 0
@@ -197,8 +281,8 @@ PDRWH_cohort_score <- function(input_dir) {
 }
 
 resultTransform <- function(cancer_type,input_dir,outfile_dir){
-  load(paste0(input_dir,cancer_type,".Rdata"))
   
+  load(paste0(input_dir,cancer_type,".Rdata"))
   all_genes <- c()
   for(i in (1:length(Importance_Score[]))) {
     genes <- rownames(Importance_Score[[i]])
@@ -216,5 +300,4 @@ resultTransform <- function(cancer_type,input_dir,outfile_dir){
   
   write.table(res_matrix,paste0(outfile_dir,"/PDRWH.txt"),quote = T,sep="\t")
   print(paste0("The output file is saved in: ",outfile_dir,"/PDRWH.txt"))
-  # PDRWH_cohort_score(outfile_dir)
 }
