@@ -88,6 +88,7 @@ for (i in 1:length(cancer_type)) {
     snv[is.na(snv)] <- "NA"
     rownames(snv) <- snv[,1]
     snv <- snv[,-1]
+    colnames(snv) <- substr(colnames(snv),1,12)
   }
   #Hypergeometric test
   top_N <- TOP[i]
