@@ -49,13 +49,16 @@ get_ppi_network <- function(network_file,b_split) {
   return(Graph)
 }
 
-combine_mut_exp <- function(data_mut_com,exp_data) {
+combine_mut_exp <- function(data_mut_com,exp_data,cancer_type) {
   
   genes <- intersect(rownames(data_mut_com),rownames(exp_data))
   exp_data_scaled <- scale(t(exp_data[genes,]),center = T,scale = T)
-  outlying_idx <- (abs(exp_data_scaled) >= 2) + 0  #
+  exp_data_scaled[is.na(exp_data_scaled)] <- 0
+  a <- as.vector(exp_data_scaled)
+  z_thres <- min(abs(quantile(a,0.95)),abs(quantile(a,0.05)))
+  outlying_idx <- (abs(exp_data_scaled) >= z_thres) + 0
   samples <- colnames(data_mut_com)
-    
+  
   data_mut_exp <- data_mut_com
   for (i in 1:length(samples)) {
     sample_i <- samples[i]
@@ -153,7 +156,6 @@ get_hyper_randomwalk <- function(P,H,theta=0.85,mut_idx) {
       break
     }
   }
-  plot(1:k,Distance)
   
   vi <- vi[mut_idx,,drop=F]
   Importance <- data.frame(vi[order(vi,decreasing = T),])
@@ -196,7 +198,7 @@ PDRWHscore <- function(cancer_type,mut_data_file,exp_data_file,network_file,outf
   colnames(data_mut_com) <- com_samples
   
   data_mut_idx <- data_mut_com
-  data_mut_exp <- combine_mut_exp(data_mut_com,exp_data)
+  data_mut_exp <- combine_mut_exp(data_mut_com,exp_data,cancer_type)
   co_mut <- t(data_mut_com) %*% data_mut_com
   
   Importance_Score <- list()
@@ -243,7 +245,6 @@ top_condorcet <- function(top_list) {
     for(i in 1:(length(gene_temp_list) - 1)) {
       gene_i <- gene_temp_list[i]
       for (j in (i + 1):length(gene_temp_list)) {
-        # print(paste0("Sample: ",K," + ","gene_",i," + ","gene_",j))
         gene_j <- gene_temp_list[j]
         condorcet_mat[gene_i,gene_j] <- condorcet_mat[gene_i,gene_j] + 1
       }
