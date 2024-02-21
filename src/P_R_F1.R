@@ -16,7 +16,7 @@ get_data <- function(data_file) {
   rownames(data) <- data[,1]
   data <- data[,-1]
   data_mut <- as.matrix(data[which(apply(data,1,sum) != 0),which(apply(data,2,sum) != 0)])
-  colnames(data_mut) <- substr(colnames(data_mut),1,12)
+  # colnames(data_mut) <- substr(colnames(data_mut),1,12)
   
   return(data_mut)
 }
