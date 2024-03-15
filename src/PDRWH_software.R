@@ -159,6 +159,7 @@ get_hyper_randomwalk <- function(P,H,theta=0.85,mut_idx) {
   
   vi <- vi[mut_idx,,drop=F]
   Importance <- data.frame(vi[order(vi,decreasing = T),])
+  Importance <- Importance / sum(Importance)
   colnames(Importance) <- c("Importance")
   
   return(Importance)
